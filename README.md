@@ -4,7 +4,7 @@ This repository stages a proposed, test-backed contribution for a real Gemma 4 t
 
 ## Problem
 
-Gemma 4 can emit a completed tool call with the closing marker `<tool_call|` but omit the final `}` from the argument object. Ollama's parser then fails JSON decoding and drops the tool call; an agent can receive an empty response.
+Gemma 4 can emit a completed tool call with the closing marker `<tool_call|>` but omit the final `}` from the argument object. Ollama's parser then fails JSON decoding and drops the tool call; an agent can receive an empty response.
 
 ## Proposed fix
 
