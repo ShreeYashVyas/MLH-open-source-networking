@@ -67,7 +67,7 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
 diff --git a/model/parsers/gemma4_test.go b/model/parsers/gemma4_test.go
 --- a/model/parsers/gemma4_test.go
 +++ b/model/parsers/gemma4_test.go
-@@ -1501,3 +1501,39 @@
+@@ -1501,3 +1501,41 @@
  		t.Fatalf("tool call mismatch (-want +got):\n%s", diff)
  	}
  }
@@ -76,34 +76,36 @@ diff --git a/model/parsers/gemma4_test.go b/model/parsers/gemma4_test.go
 +// case, repair a single missing final object brace so an otherwise complete
 +// call is not silently discarded.
 +func TestGemma4Parser_RepairsMissingFinalObjectBraceWhenClosed(t *testing.T) {
-+ 	parser := &Gemma4Parser{hasThinkingSupport: false}
-+ 	parser.Init(nil, nil, nil)
-+ 	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42<tool_call|>`, true)
-+ 	if err != nil {
-+ 		t.Fatalf("Add() error = %v", err)
-+ 	}
-+ 	if len(calls) != 1 {
-+ 		t.Fatalf("expected one repaired tool call, got %d", len(calls))
-+ 	}
-+ 	value, ok := calls[0].Function.Arguments.Get("value")
-+ 	if !ok {
-+ 		t.Fatal("repaired call is missing value argument")
-+ 	}
-+ 	if got, ok := value.(float64); !ok || got != 42 {
-+ 		t.Fatalf("value = %#v, want 42", value)
-+ 	}
-+ }
++	parser := &Gemma4Parser{hasThinkingSupport: false}
++	parser.Init(nil, nil, nil)
++
++	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42<tool_call|>`, true)
++	if err != nil {
++		t.Fatalf("Add() error = %v", err)
++	}
++	if len(calls) != 1 {
++		t.Fatalf("expected one repaired tool call, got %d", len(calls))
++	}
++	value, ok := calls[0].Function.Arguments.Get("value")
++	if !ok {
++		t.Fatal("repaired call is missing value argument")
++	}
++	if got, ok := value.(float64); !ok || got != 42 {
++		t.Fatalf("value = %#v, want 42", value)
++	}
++}
 +
 +// Without a close marker, the generation may have been cut off. Do not repair
 +// it into a valid-looking call with potentially incomplete arguments.
 +func TestGemma4Parser_DoesNotRepairMissingBraceWhenTruncated(t *testing.T) {
-+ 	parser := &Gemma4Parser{hasThinkingSupport: false}
-+ 	parser.Init(nil, nil, nil)
-+ 	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42`, true)
-+ 	if err != nil {
-+ 		t.Fatalf("Add() error = %v", err)
-+ 	}
-+ 	if len(calls) != 0 {
-+ 		t.Fatalf("expected truncated tool call to be rejected, got %d calls", len(calls))
-+ 	}
-+ }
++	parser := &Gemma4Parser{hasThinkingSupport: false}
++	parser.Init(nil, nil, nil)
++
++	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42`, true)
++	if err != nil {
++		t.Fatalf("Add() error = %v", err)
++	}
++	if len(calls) != 0 {
++		t.Fatalf("expected truncated tool call to be rejected, got %d calls", len(calls))
++	}
++}
