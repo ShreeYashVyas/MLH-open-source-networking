@@ -6,7 +6,7 @@
 
 ## Bug
 
-Gemma 4 sometimes emits `<tool_call>call:set_temp{value:42<tool_call|`: all arguments are present, and the model emitted its closing marker, but the outer arguments object is missing its final `}`. The parser's generic JSON repair path only adds a brace if another repair has already changed the candidate, so this otherwise recoverable call is dropped.
+Gemma 4 sometimes emits `<tool_call>call:set_temp{value:42<tool_call|>`: all arguments are present, and the model emitted its closing marker, but the outer arguments object is missing its final `}`. The parser's generic JSON repair path only adds a brace if another repair has already changed the candidate, so this otherwise recoverable call is dropped.
 
 ## Change
 
