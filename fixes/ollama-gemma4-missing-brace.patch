@@ -10,22 +10,21 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
  				events = append(events, gemma4EventToolCall{toolCall: toolCall})
  			} else {
  				slog.Warn("gemma4 tool call parsing failed", "error", err, "content", toolCallContent)
-@@ -399,6 +399,14 @@
+@@ -399,6 +399,13 @@
  // parseGemma4ToolCall parses a tool call in Gemma 4 format:
  // call:NAME{key:value,key:value}
  func parseGemma4ToolCall(content string, tools []api.Tool) (api.ToolCall, error) {
 +	return parseGemma4ToolCallWithOptions(content, tools, false)
 +}
 +
-+// parseGemma4ToolCallWithOptions allows a missing final object brace only when
-+// the caller has observed the tool-call close marker. Without that marker the
-+// generation may be truncated, and repairing it could create a plausible but
-+// incomplete tool call.
++// parseGemma4ToolCallWithOptions enables the generic missing-final-object-brace
++// repair only when the caller observed the tool-call close marker. Existing
++// schema-guided raw-terminal-string recovery remains a separate repair path.
 +func parseGemma4ToolCallWithOptions(content string, tools []api.Tool, allowMissingObjectClose bool) (api.ToolCall, error) {
  	// Expected format: call:NAME{args}
  	if !strings.HasPrefix(content, "call:") {
  		return api.ToolCall{}, errors.New("expected 'call:' prefix")
-@@ -419,7 +427,7 @@
+@@ -419,7 +426,7 @@
  
  	var args api.ToolCallFunctionArguments
  	if err := json.Unmarshal([]byte(jsonStr), &args); err != nil {
@@ -34,7 +33,7 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
  		if repairErr != nil {
  			return api.ToolCall{}, errors.Join(err, repairErr)
  		}
-@@ -508,8 +516,8 @@
+@@ -508,8 +515,8 @@
  // repairGemma4ToolCallArgs is a best-effort repair after strict parsing fails.
  // For example, if the model emits an unclosed gemma string as the last value,
  // we can repair it by closing it with the gemma string delimiter.
@@ -45,7 +44,7 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
  		jsonStr := gemma4ArgsToJSON(candidate)
  
  		var args api.ToolCallFunctionArguments
-@@ -534,6 +542,10 @@
+@@ -534,6 +541,10 @@
  // are willing to try after strict parsing fails. Each candidate still has to
  // pass the normal Gemma4-to-JSON conversion and JSON unmarshal before it is used.
  func gemma4RepairCandidates(argsStr, toolName string, tools []api.Tool) []string {
@@ -56,7 +55,7 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
  	seen := map[string]bool{}
  	var candidates []string
  	addCandidate := func(candidate string, allowMissingObjectClose bool) {
-@@ -549,7 +561,7 @@
+@@ -549,7 +560,7 @@
  		}
  	}
  
@@ -68,46 +67,43 @@ diff --git a/model/parsers/gemma4.go b/model/parsers/gemma4.go
 diff --git a/model/parsers/gemma4_test.go b/model/parsers/gemma4_test.go
 --- a/model/parsers/gemma4_test.go
 +++ b/model/parsers/gemma4_test.go
-@@ -1501,3 +1501,42 @@
+@@ -1501,3 +1501,39 @@
  		t.Fatalf("tool call mismatch (-want +got):\n%s", diff)
  	}
  }
-+
 +
 +// A closing tool-call marker means generation completed the tool call. In that
 +// case, repair a single missing final object brace so an otherwise complete
 +// call is not silently discarded.
 +func TestGemma4Parser_RepairsMissingFinalObjectBraceWhenClosed(t *testing.T) {
-+	parser := &Gemma4Parser{hasThinkingSupport: false}
-+	parser.Init(nil, nil, nil)
-+
-+	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42<tool_call|>`, true)
-+	if err != nil {
-+		t.Fatalf("Add() error = %v", err)
-+	}
-+	if len(calls) != 1 {
-+		t.Fatalf("expected one repaired tool call, got %d", len(calls))
-+	}
-+	value, ok := calls[0].Function.Arguments.Get("value")
-+	if !ok {
-+		t.Fatal("repaired call is missing value argument")
-+	}
-+	if got, ok := value.(float64); !ok || got != 42 {
-+		t.Fatalf("value = %#v, want 42", value)
-+	}
-+}
++ 	parser := &Gemma4Parser{hasThinkingSupport: false}
++ 	parser.Init(nil, nil, nil)
++ 	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42<tool_call|>`, true)
++ 	if err != nil {
++ 		t.Fatalf("Add() error = %v", err)
++ 	}
++ 	if len(calls) != 1 {
++ 		t.Fatalf("expected one repaired tool call, got %d", len(calls))
++ 	}
++ 	value, ok := calls[0].Function.Arguments.Get("value")
++ 	if !ok {
++ 		t.Fatal("repaired call is missing value argument")
++ 	}
++ 	if got, ok := value.(float64); !ok || got != 42 {
++ 		t.Fatalf("value = %#v, want 42", value)
++ 	}
++ }
 +
 +// Without a close marker, the generation may have been cut off. Do not repair
 +// it into a valid-looking call with potentially incomplete arguments.
 +func TestGemma4Parser_DoesNotRepairMissingBraceWhenTruncated(t *testing.T) {
-+	parser := &Gemma4Parser{hasThinkingSupport: false}
-+	parser.Init(nil, nil, nil)
-+
-+	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42`, true)
-+	if err != nil {
-+		t.Fatalf("Add() error = %v", err)
-+	}
-+	if len(calls) != 0 {
-+		t.Fatalf("expected truncated tool call to be rejected, got %d calls", len(calls))
-+	}
-+}
++ 	parser := &Gemma4Parser{hasThinkingSupport: false}
++ 	parser.Init(nil, nil, nil)
++ 	_, _, calls, err := parser.Add(`<|tool_call>call:set_temp{value:42`, true)
++ 	if err != nil {
++ 		t.Fatalf("Add() error = %v", err)
++ 	}
++ 	if len(calls) != 0 {
++ 		t.Fatalf("expected truncated tool call to be rejected, got %d calls", len(calls))
++ 	}
++ }
