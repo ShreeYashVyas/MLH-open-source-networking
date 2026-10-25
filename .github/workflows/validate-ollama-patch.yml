@@ -1,0 +1,49 @@
+name: Validate Ollama Gemma 4 patch
+
+on:
+  push:
+    paths:
+      - "fixes/**"
+      - ".github/workflows/validate-ollama-patch.yml"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parser-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out contribution
+        uses: actions/checkout@v4
+        with:
+          path: contribution
+
+      - name: Check out the upstream source version used by the patch
+        uses: actions/checkout@v4
+        with:
+          repository: ollama/ollama
+          ref: d44c2581904a98430e348d89cc2af1529b1808a0
+          path: ollama
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: ollama/go.mod
+          cache: true
+          cache-dependency-path: ollama/go.sum
+
+      - name: Verify the patch applies cleanly
+        run: git -C ollama apply --check "$GITHUB_WORKSPACE/contribution/fixes/ollama-gemma4-missing-brace.patch"
+
+      - name: Apply the patch
+        run: git -C ollama apply "$GITHUB_WORKSPACE/contribution/fixes/ollama-gemma4-missing-brace.patch"
+
+      - name: Run the new regression tests
+        working-directory: ollama
+        run: go test ./model/parsers -run 'TestGemma4Parser_(RepairsMissingFinalObjectBraceWhenClosed|DoesNotRepairMissingBraceWhenTruncated)$' -count=1
+
+      - name: Run the parser package tests
+        working-directory: ollama
+        run: go test ./model/parsers -count=1
