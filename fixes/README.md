@@ -1,24 +1,18 @@
-# Safe recovery of a completed Gemma 4 tool call
+# Safe recovery for completed Gemma 4 tool calls
 
-- Upstream issue: [ollama/ollama#17562](https://github.com/ollama/ollama/issues/17562), third reported bug.
-- Affected code: `model/parsers/gemma4.go`.
-- Regression tests: `model/parsers/gemma4_test.go`.
+- Upstream report: [ollama/ollama#17562](https://github.com/ollama/ollama/issues/17562), third issue in the report.
+- Code: `model/parsers/gemma4.go`.
+- Regression coverage: `model/parsers/gemma4_test.go`.
 
-## Before
+## Bug
 
-Input:
+Gemma 4 sometimes emits `<tool_call>call:set_temp{value:42<tool_call|`: all arguments are present, and the model emitted its closing marker, but the outer arguments object is missing its final `}`. The parser's generic JSON repair path only adds a brace if another repair has already changed the candidate, so this otherwise recoverable call is dropped.
 
-```text
-<|tool_call>call:set_temp{value:42<tool_call|>
-```
+## Change
 
-The model has emitted a closing marker, but its argument object is missing the final brace. Strict parsing fails; the tool call is discarded and the caller can receive no usable content.
+The close-marker path passes an explicit option enabling the generic final-brace repair. The end-of-generation path, where there is no close marker, does not enable it. This is important because a generation cut off at the token limit may have incomplete values; blindly adding braces can make truncated calls look valid.
 
-## After
-
-The parser retries with one final object brace only when it has seen `<tool_call|`. The arguments then parse as `{"value": 42}`.
-
-A second regression test asserts that the same incomplete payload **without** `<tool_call|` remains rejected. That guard matters because the generation may have been cut off at a token limit. We should never turn a truncated tool call into a valid-looking one with missing arguments.
+A separate test covers the same payload without the close marker and requires it to remain rejected.
 
 ## Apply and test
 
@@ -30,8 +24,8 @@ go test ./model/parsers -run 'TestGemma4Parser_(RepairsMissingFinalObjectBraceWh
 go test ./model/parsers -count=1
 ```
 
-The patch is based on the Ollama `main` source fetched on 25 October 2026. This environment could not clone Ollama to run Go tests, so tests remain unverified here; run them locally before submitting upstream.
+I attempted to obtain an upstream checkout here, but outbound DNS prevented cloning GitHub, so I could not execute the Go tests in this environment. Run the tests locally before opening an upstream pull request.
 
-## Why this is a reasonable intermediate contribution
+## Contribution status
 
-It fixes an actual user-visible failure in model tool calling, introduces a conservative parsing rule, and tests both the successful repair and the truncation guard. The contribution is more substantial than changing a model-name threshold, but maintainers must still review it and may prefer another design.
+This patch is committed in the contribution repository for review. It is **not** merged into `ollama/ollama`. Existing [PR #16075](https://github.com/ollama/ollama/pull/16075) also touches the parser state machine, so a future upstream submission should check its latest state and rebase/adapt as needed.
